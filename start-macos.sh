@@ -131,8 +131,26 @@ fi
 #    Named `venv` to match the manual steps and build-macos-app.sh, so the
 #    clickable .app reuses this same environment.
 VENV_PY="./venv/bin/python3"
-if [ ! -x "$VENV_PY" ] || ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
-    [ -d venv ] && { echo "▶ Existing venv is incomplete (no working pip) — rebuilding…"; rm -rf venv; }
+VENV_REBUILD_REASON=""
+if [ -d venv ]; then
+    if [ ! -x "$VENV_PY" ]; then
+        VENV_REBUILD_REASON="missing its Python executable"
+    elif ! "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+        VENV_REBUILD_REASON="has no working pip"
+    elif ! "$VENV_PY" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] >= (3, 11) else 1)' 2>/dev/null; then
+        VENV_VERSION="$("$VENV_PY" -c 'import platform; print(platform.python_version())' 2>/dev/null || echo unknown)"
+        VENV_REBUILD_REASON="uses Python $VENV_VERSION, but Odysseus requires Python 3.11+"
+    elif [ "$(uname -m)" = "arm64" ] && [ "$("$VENV_PY" -c 'import platform; print(platform.machine())' 2>/dev/null)" != "arm64" ]; then
+        VENV_REBUILD_REASON="uses a non-arm64 Python on Apple Silicon"
+    fi
+fi
+
+if [ -n "$VENV_REBUILD_REASON" ]; then
+    echo "▶ Existing venv $VENV_REBUILD_REASON — rebuilding…"
+    rm -rf "$REPO_DIR/venv"
+fi
+
+if [ ! -x "$VENV_PY" ]; then
     echo "▶ Creating Python environment…"
     "$PY" -m venv venv
 fi
